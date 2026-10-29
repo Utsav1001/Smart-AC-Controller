@@ -24,22 +24,23 @@
 const char* WIFI_SSID = "YOUR_HOTSPOT_NAME";      // <-- CHANGE TO YOUR HOTSPOT NAME
 const char* WIFI_PASS = "YOUR_HOTSPOT_PASSWORD";  // <-- CHANGE TO YOUR HOTSPOT PASSWORD
 
-// 2. Set your Laptop's IP address on the hotspot (run ipconfig to find it):
-const char* MQTT_HOST = "10.20.14.155";          // <-- CHANGE IF YOUR IP DIFFERS
+// 2. Public Cloud MQTT Broker (no local Mosquitto needed!):
+const char* MQTT_HOST = "broker.emqx.io";
 const int   MQTT_PORT = 1883;
 
-// Device & Topics
+// Device & Project-prefixed Topics
 const char* DEVICE_ID     = "esp32-1";
-const char* TOPIC_SENSORS = "ac/sensors";
-const char* TOPIC_COMMAND = "ac/command";
-const char* TOPIC_MODE    = "ac/mode";
+const char* TOPIC_SENSORS = "pdeu-ac-7x3k/ac/sensors";
+const char* TOPIC_COMMAND = "pdeu-ac-7x3k/ac/command";
+const char* TOPIC_MODE    = "pdeu-ac-7x3k/ac/mode";
 
 // ==============================================================================
-// Sensor Hardware Pins
+// Sensor & LED Hardware Pins
 // ==============================================================================
 #define DHTPIN  5       // DHT11 DATA connected to GPIO 5
 #define DHTTYPE DHT11   // DHT11 sensor type
 #define PIRPIN  4       // PIR Motion OUT connected to GPIO 4
+#define LED_PIN 2       // ESP32 Onboard LED on GPIO 2
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
@@ -87,6 +88,17 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print(" | Payload: ");
   Serial.println(message);
+
+  // Flip the Learning/Auto switch: ESP32 onboard LED turns ON in auto mode, OFF in learning mode
+  if (String(topic).endsWith("ac/mode")) {
+    if (message.indexOf("\"auto\"") >= 0) {
+      digitalWrite(LED_PIN, HIGH);
+      Serial.println("[MODE] AUTO mode -> Onboard LED ON");
+    } else if (message.indexOf("\"learning\"") >= 0) {
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("[MODE] LEARNING mode -> Onboard LED OFF");
+    }
+  }
 }
 
 // ==============================================================================
@@ -100,7 +112,10 @@ void reconnectMQTT() {
     Serial.print(MQTT_PORT);
     Serial.print(" ... ");
 
-    if (client.connect(DEVICE_ID)) {
+    // Generate unique client ID based on ESP32 MAC address
+    String clientId = "esp32-1-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+
+    if (client.connect(clientId.c_str())) {
       Serial.println("connected!");
       // Subscribe to control topics
       client.subscribe(TOPIC_COMMAND);
@@ -147,6 +162,8 @@ void setup() {
   Serial.println("==============================================");
 
   pinMode(PIRPIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW); // LED starts OFF in learning mode
   dht.begin();
 
   setupWiFi();
@@ -203,3 +220,4 @@ void loop() {
     }
   }
 }
+

@@ -19,19 +19,23 @@ DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "ac_system.db"
 
 # ==============================================================================
-# MQTT Broker Settings (Mosquitto on localhost, default port 1883, no auth)
+# MQTT Broker Settings
 # ==============================================================================
-MQTT_BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "localhost")
+# Use broker.emqx.io cloud broker with unique student/project prefix
+MQTT_BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "broker.emqx.io")
 MQTT_BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", 1883))
 MQTT_KEEPALIVE = 60
+
+# Topic prefix to avoid collisions on public broker
+MQTT_PREFIX = os.getenv("MQTT_PREFIX", "pdeu-ac-7x3k/")
 
 # ==============================================================================
 # MQTT Topics
 # ==============================================================================
-TOPIC_SENSORS = "ac/sensors"   # Periodic telemetry: temp, humidity, motion
-TOPIC_ACTIONS = "ac/actions"   # Human/remote actions: power, mode, set_temp, fan
-TOPIC_COMMAND = "ac/command"   # Backend automation commands sent to device
-TOPIC_MODE = "ac/mode"         # System operating mode: "learning" or "auto"
+TOPIC_SENSORS = f"{MQTT_PREFIX}ac/sensors"   # Periodic telemetry: temp, humidity, motion
+TOPIC_ACTIONS = f"{MQTT_PREFIX}ac/actions"   # Human/remote actions: power, mode, set_temp, fan
+TOPIC_COMMAND = f"{MQTT_PREFIX}ac/command"   # Backend automation commands sent to device
+TOPIC_MODE = f"{MQTT_PREFIX}ac/mode"         # System operating mode: "learning" or "auto"
 
 # List of topics backend listens to (sensors, actions, and mode switch)
 BACKEND_SUBSCRIPTION_TOPICS = [

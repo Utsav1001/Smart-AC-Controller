@@ -30,7 +30,7 @@ timeout /t 1 /nobreak >nul
 
 :: 4. Start Streamlit Dashboard
 echo [4/4] Starting Streamlit Live Dashboard...
-start "AC Dashboard" streamlit run dashboard.py
+start "AC Dashboard" python -m streamlit run dashboard.py
 
 echo.
 echo All services launched in their respective windows!

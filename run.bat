@@ -11,8 +11,8 @@ call venv\Scripts\activate.bat
 
 :: 1. Start Mosquitto Broker (if installed in default path)
 if exist "C:\Program Files\mosquitto\mosquitto.exe" (
-    echo [1/4] Starting Mosquitto MQTT Broker...
-    start "Mosquitto Broker" "C:\Program Files\mosquitto\mosquitto.exe" -v
+    echo [1/4] Starting Mosquitto MQTT Broker with mosquitto.conf...
+    start "Mosquitto Broker" "C:\Program Files\mosquitto\mosquitto.exe" -c "%~dp0mosquitto.conf" -v
     timeout /t 2 /nobreak >nul
 ) else (
     echo [WARN] Mosquitto not found at default path. Ensure broker is running on localhost:1883.

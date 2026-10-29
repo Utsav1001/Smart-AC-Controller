@@ -1,0 +1,29 @@
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# SQLite database files (keep data/ directory with .gitkeep)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+
+# Streamlit
+.streamlit/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/

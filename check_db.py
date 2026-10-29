@@ -47,12 +47,14 @@ def inspect_db(limit: int = 5):
     db.init_db()
 
     counts = db.get_row_counts()
-    sensor_count = counts["sensor_readings"]
-    action_count = counts["user_actions"]
+    sensor_count = counts.get("sensor_readings", 0)
+    action_count = counts.get("user_actions", 0)
+    pred_count = counts.get("predictions", 0)
 
     print(f"\nTABLE SUMMARY:")
     print(f"  - sensor_readings : {sensor_count:,} rows")
-    print(f"  - user_actions    : {action_count:,} rows\n")
+    print(f"  - user_actions    : {action_count:,} rows")
+    print(f"  - predictions     : {pred_count:,} rows\n")
 
     # 1. Inspect sensor_readings
     print(f"-" * 80)
@@ -71,6 +73,15 @@ def inspect_db(limit: int = 5):
     action_headers = ["ID", "Device", "Timestamp", "Power", "Mode", "SetTemp", "Fan", "Source"]
     action_keys = ["id", "device", "ts", "power", "mode", "set_temp", "fan", "source"]
     print(format_table(action_rows, action_headers, action_keys))
+
+    # 3. Inspect predictions
+    print(f"-" * 80)
+    print(f"LATEST {limit} AUTOMATED PREDICTIONS (Table: predictions):")
+    print(f"-" * 80)
+    pred_rows = db.get_last_records("predictions", limit=limit)
+    pred_headers = ["ID", "Timestamp", "Action", "Model", "Mode", "Sent", "Reason"]
+    pred_keys = ["id", "ts", "predicted_action", "model_name", "mode", "sent", "reason"]
+    print(format_table(pred_rows, pred_headers, pred_keys))
 
     print("=" * 80)
 

@@ -371,6 +371,22 @@ def render_live_view(source: Optional[str]):
         ]
         st.dataframe(recent_actions, use_container_width=True, hide_index=True)
 
+    # 5. Last 10 Automated Predictions with Reason
+    st.markdown("---")
+    st.subheader("🤖 Recent Automated Predictions (Auto Mode)")
+    pred_df = db.get_predictions_dataframe(limit=10)
+    if pred_df.empty:
+        st.info("No predictions logged yet. Switch to Auto Mode to see real-time decisions.")
+    else:
+        display_df = pred_df.copy()
+        if "sent" in display_df.columns:
+            display_df["status"] = display_df["sent"].apply(
+                lambda s: "✅ Sent to Device" if s == 1 else "⏸️ Suppressed / No-op"
+            )
+        cols_to_show = ["id", "ts", "predicted_action", "model_name", "status", "reason"]
+        cols_available = [c for c in cols_to_show if c in display_df.columns]
+        st.dataframe(display_df[cols_available], use_container_width=True, hide_index=True)
+
 
 # ==============================================================================
 # PAGE 2: HISTORY
@@ -550,8 +566,17 @@ def render_model_results():
     models = data.get("models", {})
     confusion_matrix = data.get("confusion_matrix", [])
     labels = data.get("labels", [])
+    best_model = data.get("best_model", "Unknown")
+    data_source = data.get("data_source", "all")
+    train_rows = data.get("train_rows", 0)
+    test_rows = data.get("test_rows", 0)
 
-    st.success(f"Models trained on: **{trained_on}**")
+    st.success(
+        f"Models trained on: **{trained_on}** &nbsp;|&nbsp; "
+        f"Best Model: **{best_model.upper()}** &nbsp;|&nbsp; "
+        f"Data Source: **{data_source.upper()}** &nbsp;|&nbsp; "
+        f"Rows: **{train_rows:,}** train, **{test_rows:,}** test"
+    )
 
     # 1. Comparison Table
     st.subheader("📊 Model Comparison Table")
@@ -561,8 +586,9 @@ def render_model_results():
         table_rows.append({
             "Model": formatted_name,
             "Accuracy": f"{metrics.get('accuracy', 0.0) * 100:.1f}%",
-            "Precision": f"{metrics.get('precision', 0.0) * 100:.1f}%",
-            "Recall": f"{metrics.get('recall', 0.0) * 100:.1f}%",
+            "Macro Precision": f"{metrics.get('precision', 0.0) * 100:.1f}%",
+            "Macro Recall": f"{metrics.get('recall', 0.0) * 100:.1f}%",
+            "Macro F1 (Primary)": f"{metrics.get('f1', 0.0) * 100:.1f}%",
         })
 
     if table_rows:
@@ -624,6 +650,11 @@ def render_model_results():
         plt.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
+
+    # 4. Feature Importance Chart (if available)
+    if config.FEATURE_IMPORTANCE_PATH.exists():
+        st.subheader("🌲 Feature Importance (Random Forest)")
+        st.image(str(config.FEATURE_IMPORTANCE_PATH), use_container_width=True)
 
 
 # ==============================================================================

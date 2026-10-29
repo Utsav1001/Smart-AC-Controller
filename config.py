@@ -33,10 +33,11 @@ TOPIC_ACTIONS = "ac/actions"   # Human/remote actions: power, mode, set_temp, fa
 TOPIC_COMMAND = "ac/command"   # Backend automation commands sent to device
 TOPIC_MODE = "ac/mode"         # System operating mode: "learning" or "auto"
 
-# List of topics backend listens to
+# List of topics backend listens to (sensors, actions, and mode switch)
 BACKEND_SUBSCRIPTION_TOPICS = [
     (TOPIC_SENSORS, 0),
     (TOPIC_ACTIONS, 0),
+    (TOPIC_MODE, 0),
 ]
 
 # List of topics simulator listens to
@@ -79,3 +80,54 @@ VALID_COMMAND_ACTIONS = [CMD_NONE, CMD_ON, CMD_OFF, CMD_TEMP_UP, CMD_TEMP_DOWN, 
 # Data source tagging
 SOURCE_REAL = "real"
 SOURCE_SIMULATED = "simulated"
+
+# ==============================================================================
+# Model Training & Inference Constants
+# ==============================================================================
+ACTION_WINDOW_MINUTES = 5       # Time window to search for user actions following a sensor reading
+TRAIN_SPLIT_RATIO = 0.7         # Earliest 70% for training, latest 30% for testing
+
+# Rule-based model thresholds
+RULE_EMPTY_MINUTES_THRESHOLD = 10   # Empty >= 10 mins & AC on -> predict off
+RULE_HOT_TEMP_THRESHOLD = 28.0      # Temp >= 28.0 & occupied & AC off -> predict on
+
+# Decision Tree & Random Forest hyperparameters
+DT_MAX_DEPTH = 6
+RF_N_ESTIMATORS = 100
+
+# Artifact paths
+MODEL_PATH = DATA_DIR / "model.joblib"
+RESULTS_PATH = DATA_DIR / "results.json"
+CONFUSION_MATRIX_PATH = DATA_DIR / "confusion_matrix.png"
+FEATURE_IMPORTANCE_PATH = DATA_DIR / "feature_importance.png"
+
+# Target labels and feature names
+LABEL_NONE = "none"
+LABEL_ON = "on"
+LABEL_OFF = "off"
+LABEL_TEMP_UP = "temp_up"
+LABEL_TEMP_DOWN = "temp_down"
+ALL_LABELS = [LABEL_NONE, LABEL_ON, LABEL_OFF, LABEL_TEMP_UP, LABEL_TEMP_DOWN]
+
+FEATURE_COLUMNS = [
+    "temp",
+    "humidity",
+    "motion",
+    "minutes_since_last_motion",
+    "hour_of_day",
+    "day_of_week",
+    "ac_is_on",
+    "ac_set_temp",
+    "temp_minus_set_temp",
+]
+
+# ==============================================================================
+# Auto-Mode Safety Constraints & Limits
+# ==============================================================================
+AUTO_COMMAND_COOLDOWN_MINUTES = 5   # Send at most 1 command every 5 minutes
+MANUAL_OVERRIDE_PAUSE_MINUTES = 10  # Pause auto commands for 10 minutes when user manually uses remote
+AUTO_SENSOR_TIMEOUT_SECONDS = 120   # 2 minutes without sensor reading triggers warning and no-op
+MIN_AUTO_SET_TEMP = 22              # Strict minimum allowed auto temperature setting
+MAX_AUTO_SET_TEMP = 28              # Strict maximum allowed auto temperature setting
+AUTO_TEMP_STEP = 1                  # Change temperature by at most 1 degree per command
+

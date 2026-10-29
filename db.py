@@ -33,9 +33,21 @@ CREATE TABLE IF NOT EXISTS user_actions (
     source TEXT NOT NULL DEFAULT 'real'
 );
 
+-- Table to store automated AC predictions and dispatch decisions
+CREATE TABLE IF NOT EXISTS predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    predicted_action TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    sent INTEGER NOT NULL,
+    reason TEXT NOT NULL
+);
+
 -- Performance indexes for timestamp filtering and queries
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_ts ON sensor_readings(ts);
 CREATE INDEX IF NOT EXISTS idx_user_actions_ts ON user_actions(ts);
+CREATE INDEX IF NOT EXISTS idx_predictions_ts ON predictions(ts);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_device ON sensor_readings(device);
 CREATE INDEX IF NOT EXISTS idx_user_actions_device ON user_actions(device);
 """
@@ -161,9 +173,13 @@ def get_row_counts(db_path: Optional[Path] = None) -> Dict[str, int]:
         cursor.execute("SELECT COUNT(*) FROM user_actions;")
         action_count = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM predictions;")
+        predictions_count = cursor.fetchone()[0]
+
         return {
             "sensor_readings": sensor_count,
             "user_actions": action_count,
+            "predictions": predictions_count,
         }
     finally:
         conn.close()
@@ -173,14 +189,14 @@ def get_last_records(table_name: str, limit: int = 5, db_path: Optional[Path] = 
     """Fetches the last N records from a table ordered by ID descending.
 
     Args:
-        table_name: 'sensor_readings' or 'user_actions'
+        table_name: 'sensor_readings', 'user_actions', or 'predictions'
         limit: Number of records to retrieve (default: 5)
         db_path: Path to database
 
     Returns:
         list of dict: List of records converted to dictionaries
     """
-    if table_name not in ("sensor_readings", "user_actions"):
+    if table_name not in ("sensor_readings", "user_actions", "predictions"):
         raise ValueError(f"Invalid table name: {table_name}")
 
     conn = get_connection(db_path)
@@ -299,4 +315,66 @@ def get_actions_dataframe(
         return df
     finally:
         conn.close()
+
+
+def insert_prediction(data: Dict[str, Any], db_path: Optional[Path] = None) -> int:
+    """Inserts a decision prediction log into the predictions table.
+
+    Expected keys:
+        - ts (str): ISO timestamp
+        - predicted_action (str): 'none', 'on', 'off', 'temp_up', 'temp_down'
+        - model_name (str): 'rule', 'decision_tree', 'random_forest', etc.
+        - mode (str): 'learning' or 'auto'
+        - sent (int): 1 if published to ac/command, 0 if suppressed
+        - reason (str): Explanation for action or why it was not sent
+
+    Returns:
+        int: The inserted record ID.
+    """
+    ts = str(data.get("ts", ""))
+    predicted_action = str(data.get("predicted_action", "none")).lower()
+    model_name = str(data.get("model_name", "unknown"))
+    mode = str(data.get("mode", "auto")).lower()
+    sent = int(data.get("sent", 0))
+    reason = str(data.get("reason", ""))
+
+    sql = """
+    INSERT INTO predictions (ts, predicted_action, model_name, mode, sent, reason)
+    VALUES (?, ?, ?, ?, ?, ?);
+    """
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.execute(sql, (ts, predicted_action, model_name, mode, sent, reason))
+            return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_last_predictions(limit: int = 10, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Fetches the last N predictions ordered by ID descending."""
+    conn = get_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM predictions ORDER BY id DESC LIMIT ?;", (limit,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_predictions_dataframe(limit: Optional[int] = None, db_path: Optional[Path] = None):
+    """Loads prediction logs into a Pandas DataFrame."""
+    import pandas as pd
+
+    conn = get_connection(db_path)
+    try:
+        query = "SELECT id, ts, predicted_action, model_name, mode, sent, reason FROM predictions ORDER BY id DESC"
+        if limit:
+            query += f" LIMIT {int(limit)}"
+        df = pd.read_sql_query(query, conn)
+        return df
+    finally:
+        conn.close()
+
 

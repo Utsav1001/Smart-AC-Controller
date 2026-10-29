@@ -277,7 +277,73 @@ python check_db.py --limit 20
 
 ---
 
-## 5. MQTT Topics and JSON Schemas
+## 6. Model Training & Evaluation (`train.py`)
+
+Once you have gathered sensor telemetry and user remote interactions (using the simulator or real hardware), you can train machine learning models to learn how the user operates their AC.
+
+### Run Training:
+```bash
+python train.py --source all
+```
+
+*(You can also filter by data source: `python train.py --source simulated` or `python train.py --source real`)*
+
+### How Training Works:
+1. **Decision Points**: Every sensor reading is treated as a decision point.
+2. **Labeling**: Checks the user actions in the subsequent 5-minute window (`ACTION_WINDOW_MINUTES = 5`). If an action occurred, it maps to `on`, `off`, `temp_up`, or `temp_down`. If no action occurred, the label is `none`.
+3. **9 Domain Features**:
+   - `temp`: Ambient temperature
+   - `humidity`: Relative humidity
+   - `motion`: Presence detection (1 or 0)
+   - `minutes_since_last_motion`: Minutes since last movement
+   - `hour_of_day`: Time of day (0.0 to 23.9)
+   - `day_of_week`: Day of week (0 to 6)
+   - `ac_is_on`: Current AC power state from previous action
+   - `ac_set_temp`: Current set temperature
+   - `temp_minus_set_temp`: Temperature gap from target
+4. **Time-Based Chronological Split**: Earliest 70% of rows for training, latest 30% for evaluation (never randomized, preserving temporal integrity).
+5. **Three Models Evaluated**:
+   - **Rule-based Heuristic**: Off if empty $\ge 10$ mins & AC on; On if temp $\ge 28^\circ\text{C}$ & occupied & AC off; otherwise None.
+   - **Decision Tree Classifier**: Depth 6, balanced class weights.
+   - **Random Forest Classifier**: 100 trees, balanced class weights.
+6. **Model Selection**: Selected by **Macro F1 score** to ensure rare classes (`on`, `off`, `temp_up`, `temp_down`) are prioritized over the dominant `none` class.
+
+### How to Read the Results:
+- **Terminal Output**: Prints accuracy, macro precision, macro recall, and macro F1 for each model, followed by the per-class classification report.
+- **Saved Artifacts**:
+  - `data/model.joblib`: The winning trained model package and feature order.
+  - `data/results.json`: Summary benchmark JSON consumed by the dashboard.
+  - `data/confusion_matrix.png`: Heatmap of true vs. predicted action classes.
+  - `data/feature_importance.png`: Bar chart of Random Forest feature weights.
+- **Dashboard**: Open the **🤖 Model Results** page in Streamlit to view comparisons and heatmaps interactively.
+
+---
+
+## 7. Auto-Mode Control Loop (`predictor.py` & `backend.py`)
+
+In **Auto Mode**, the backend autonomously controls the air conditioner based on predictions from the trained model.
+
+### How to Switch to Auto Mode:
+1. **From Dashboard**: Toggle the switch to `Auto Mode` on the **📡 Live View** page.
+2. **From Terminal (MQTT command)**:
+   ```bash
+   python -c "import paho.mqtt.publish as p; p.single('ac/mode', '{\"mode\":\"auto\"}', hostname='localhost')"
+   ```
+   *(To return to observation mode: `python -c "import paho.mqtt.publish as p; p.single('ac/mode', '{\"mode\":\"learning\"}', hostname='localhost')"`)*
+
+### Auto Mode Safety Limits:
+- **Predictor Module (`predictor.py`)**: Evaluates real-time sensor readings and recent history against `data/model.joblib`. If the model is not trained yet, it falls back seamlessly to the rule-based heuristic.
+- **Command Dispatch**: When the predicted action is not `none`, publishes `{"action": "...", "set_temp": N}` to topic `ac/command`.
+- **Command Cooldown**: Dispatches at most **1 command every 5 minutes**.
+- **Redundancy Guard**: Never sends `on` if the AC is already on; never sends `off` if the AC is already off.
+- **Temperature Boundaries**: Strictly clamps `set_temp` between **22°C and 28°C**, and shifts temperature by at most **1°C per command**.
+- **Manual Override Guard**: If a human user operates the physical AC remote while in auto mode, automated commands are automatically **paused for 10 minutes**.
+- **Sensor Stalling Guard**: If no sensor telemetry arrives for **2 minutes**, automated actions are suppressed and a warning is logged.
+- **Audit Logging**: Every single prediction and decision reason is permanently logged to the `predictions` table in SQLite and visible on the Live Dashboard.
+
+---
+
+## 8. MQTT Topics and JSON Schemas
 
 | Topic | Publisher | Subscriber | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -332,7 +398,7 @@ python check_db.py --limit 20
 
 ---
 
-## 6. Testing Automation Commands
+## 9. Testing Automation Commands
 
 While `simulator.py` is running, you can test commands in a separate terminal:
 
@@ -349,7 +415,7 @@ The simulator will print the command received and update its internal AC set tem
 
 ---
 
-## 7. Database Schema Details
+## 10. Database Schema Details
 
 SQLite database file: `data/ac_system.db`
 
@@ -371,3 +437,12 @@ SQLite database file: `data/ac_system.db`
 - `set_temp` (INTEGER, Celsius)
 - `fan` (TEXT, 'auto', 'low', 'med', 'high')
 - `source` (TEXT, 'real' or 'simulated', default: 'real')
+
+### Table: `predictions`
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `ts` (TEXT, ISO-8601 format)
+- `predicted_action` (TEXT, 'none', 'on', 'off', 'temp_up', 'temp_down')
+- `model_name` (TEXT, 'random_forest', 'decision_tree', 'rule', etc.)
+- `mode` (TEXT, 'auto' or 'learning')
+- `sent` (INTEGER, 1 if published to device, 0 if suppressed)
+- `reason` (TEXT, detailed explanation for decision or suppression)
